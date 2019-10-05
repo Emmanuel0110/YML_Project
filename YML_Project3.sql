@@ -1,0 +1,16 @@
+DROP DATABASE IF EXISTS yml_store ;
+CREATE SCHEMA yml_store ;
+USE yml_store ;
+
+CREATE TABLE tree (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  filePath VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE node (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(255) NOT NULL,
+  value VARCHAR(255),
+  tree_id INT,
+  FOREIGN KEY (tree_id) REFERENCES tree(id)
+);
