@@ -14,76 +14,31 @@ import static java.sql.Statement.RETURN_GENERATED_KEYS;
 public class Database {
     private final DataSource dataSource;
 
-
     public Database(DataSource dataSource) {
         this.dataSource = dataSource;
     }
 
-//    List<Person> allPersons() {
-//        try (
-//                var connection = dataSource.getConnection();
-//                var statement = connection.prepareStatement("SELECT id, name, age FROM city")
-//        ) {
-//            var rs = statement.executeQuery();
-//            var persons = new ArrayList<Person>();
-//            while (rs.next()){
-//                persons.add(
-//                        new Person(
-//                                rs.getInt("id"),
-//                                rs.getString("name"),
-//                                rs.getInt("age")
-//                        )
-//                );
-//            }
-//            return persons;
-//        } catch (SQLException e) {
-//            throw new RuntimeException(e);
-//        }
-//    }
-
-//    Person person(int id) {
-//        try (
-//                var connection = dataSource.getConnection();
-//                var statement = connection.prepareStatement("SELECT id, name, age FROM city where id = ?")
-//        ) {
-//            statement.setInt(1, id);
-//            var rs = statement.executeQuery();
-//            if (rs.next()) {
-//                return new Person(
-//                        rs.getInt("id"),
-//                        rs.getString("name"),
-//                        rs.getInt("age")
-//                );
-//            }
-//            return null;
-//        } catch (SQLException e) {
-//            throw new RuntimeException(e);
-//        }
-//    }
-
-    void save(Node node) throws RuntimeException {
-        int fileId;
-        try (
-                var connection = dataSource.getConnection();
-                var statement = connection.prepareStatement( "INSERT INTO file(path) VALUES(?);", RETURN_GENERATED_KEYS);
-        ) {
-            statement.setString(1, node.path);
-            statement.executeUpdate();
-            var rs = statement.getGeneratedKeys();
-            rs.next();
-            fileId = rs.getInt(1);
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        }
-
-        try (
-                var connection = dataSource.getConnection();
-                var statement = connection.prepareStatement( "INSERT INTO node(name,value,file_id) VALUES(?,?,?);");
-        ) {
-            statement.setString(1, node.name);
-            statement.setString(2, node.value);
-            statement.setInt(3, fileId);
-            statement.executeUpdate();
+    void save(Yaml yaml) throws RuntimeException {
+        try (var connection = dataSource.getConnection()) {
+            connection.setAutoCommit(false);
+            try(var statement = connection.prepareStatement( "INSERT INTO tree(filePath) VALUES(?);", RETURN_GENERATED_KEYS)) {
+                statement.setString(1, yaml.filePath);
+                statement.executeUpdate();
+                var rs = statement.getGeneratedKeys();
+                rs.next();
+                yaml.id = rs.getInt(1);
+            }
+            try (var statement = connection.prepareStatement( "INSERT INTO node(name,value,tree_id) VALUES(?,?,?);")) {
+                for (var node : yaml.dbNodes) {
+                    statement.setString(1, node.name);
+                    statement.setString(2, node.value);
+                    statement.setInt(3, yaml.id);
+                    statement.executeUpdate();
+                    statement.addBatch();
+                }
+                statement.executeBatch();
+            }
+            connection.commit();
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -109,9 +64,9 @@ public class Database {
     ArrayList<String> paths(String nodeName, String nodeValue){
         try (
                 var connection = dataSource.getConnection();
-                    var statement = connection.prepareStatement("SELECT DISTINCT file.path as path " +
-                            "FROM node JOIN file " +
-                            "ON node.file_id= file.id " +
+                    var statement = connection.prepareStatement("SELECT DISTINCT tree.filePath as path " +
+                            "FROM node JOIN tree " +
+                            "ON node.tree_id= tree.id " +
                             "WHERE node.name = ? AND node.value = ?");
         ) {
             statement.setString(1, nodeName);
@@ -127,35 +82,5 @@ public class Database {
             throw new RuntimeException(e);
         }
     }
-
-//    public void update(Person person) {
-//        try (
-//                var connection = dataSource.getConnection();
-//                var statement = connection.prepareStatement("UPDATE city SET name=?,age=? WHERE id = ?");
-//        ) {
-//            statement.setString(1, person.name);
-//            statement.setInt(2, person.age);
-//            statement.setInt(3, person.id);
-//            var res = statement.executeUpdate();
-//            if (res == 0) throw new RuntimeException("No person with id " + person.id );
-//
-//        } catch (SQLException e) {
-//            throw new RuntimeException(e);
-//        }
-//    }
-//
-//    public void delete(int id) {
-//        try (
-//                var connection = dataSource.getConnection();
-//                var statement = connection.prepareStatement("Delete FROM  city  WHERE id = ?");
-//        ) {
-//            statement.setInt(1, id);
-//            var res = statement.executeUpdate();
-//            if (res == 0) throw new RuntimeException();
-//
-//        } catch (SQLException e) {
-//            throw new RuntimeException(e);
-//        }
-//    }
 }
 

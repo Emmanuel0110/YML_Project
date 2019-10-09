@@ -1,7 +1,5 @@
 package com.manu.ymlproject;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
@@ -10,13 +8,15 @@ import java.util.ArrayList;
 @RestController
 public class Controller {
     private final Database database;
+    private final YamlService yamlService;
 
-    public Controller(Database database) {
+    public Controller(Database database, YamlService yamlService) {
         this.database = database;
+        this.yamlService = yamlService;
     }
 
     @GetMapping("names")
-    ArrayList<String> getNames(){
+    ArrayList<String> names(){
         return database.names();
     }
 
@@ -26,10 +26,12 @@ public class Controller {
     }
 
     @PostMapping("file")
-    void saveFile(@RequestParam MultipartFile file, @RequestParam String path) throws IOException {
-        final var mapper = new ObjectMapper(new YAMLFactory());
-        final var tree = mapper.readTree(file.getInputStream());
-        final var treeManager = new TreeManager(database, path);
-        treeManager.readNode(tree);
+    void saveFile(@RequestParam MultipartFile file, @RequestParam("path") String filePath) throws BadRequestException {
+        try {
+            var yaml = yamlService.yaml(file, filePath);
+            database.save(yaml);
+        } catch (IOException e) {
+            throw new BadRequestException("Input stream couldn't be read");
+        }
     }
 }
