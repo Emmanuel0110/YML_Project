@@ -20,9 +20,11 @@ public class Controller {
         return database.names();
     }
 
-    @GetMapping("node")
-    ArrayList<String> getPaths(@RequestParam String name, @RequestParam String value){
-        return database.paths(name, value);
+//    @GetMapping("node")
+@PostMapping("node")
+//    ArrayList<String> getPaths(@RequestParam String name, @RequestParam String value){
+    ArrayList<String> getPaths(@RequestBody QueryForm[] queryForms){
+        return database.paths(queryForms);
     }
 
     @PostMapping("file")
