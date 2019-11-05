@@ -15,18 +15,6 @@ public class Controller {
         this.yamlService = yamlService;
     }
 
-    @GetMapping("names")
-    ArrayList<String> names(){
-        return database.names();
-    }
-
-//    @GetMapping("node")
-@PostMapping("node")
-//    ArrayList<String> getPaths(@RequestParam String name, @RequestParam String value){
-    ArrayList<String> getPaths(@RequestBody QueryForm[] queryForms){
-        return database.paths(queryForms);
-    }
-
     @PostMapping("file")
     void saveFile(@RequestParam MultipartFile file, @RequestParam("path") String filePath) throws BadRequestException {
         try {
@@ -35,5 +23,13 @@ public class Controller {
         } catch (IOException e) {
             throw new BadRequestException("Input stream couldn't be read");
         }
+    }
+
+    @GetMapping("attributes")
+    ArrayList<Attribute> attributes(){ return database.attributes(); }
+
+    @PostMapping("paths")
+    ArrayList<String> getPaths(@RequestBody QueryForm[] queryForms){
+        return database.paths(queryForms);
     }
 }
