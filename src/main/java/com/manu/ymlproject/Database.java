@@ -1,5 +1,6 @@
 package com.manu.ymlproject;
 
+import com.mysql.cj.MysqlType;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
@@ -17,12 +18,14 @@ import static java.sql.Statement.RETURN_GENERATED_KEYS;
 @Component
 public class Database {
     private final DataSource dataSource;
+    private Pattern datePattern = Pattern.compile("^\\d{2}-\\d{2}-\\d{4}$");
+    private DateTimeFormatter dateFormat = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
     public Database(DataSource dataSource) {
         this.dataSource = dataSource;
     }
 
-    void save(Yaml yaml) throws RuntimeException {
+    void save(Yaml yaml) {
         try (var connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try(var statement = connection.prepareStatement( "INSERT INTO tree(filePath) VALUES(?);", RETURN_GENERATED_KEYS)) {
@@ -58,8 +61,9 @@ public class Database {
                             statement_date.setDate(2,
                                                         java.sql.Date.valueOf(
                                                             LocalDate.parse(
-                                                                node.value,
-                                                                DateTimeFormatter.ofPattern("dd-MM-yyyy"))));
+                                                                node.value, dateFormat)));
+//                            LocalDate ld = LocalDate.parse(node.value, DateTimeFormatter.ofPattern("dd-MM-yyyy"));
+//                            statement_date.setObject(2, ld, MysqlType.DATE);
                             statement_date.addBatch();
                         }
                     }
@@ -111,7 +115,7 @@ public class Database {
             Double.parseDouble(nodeValue);
             return 0;//Number
         } catch (NumberFormatException | NullPointerException nfe) {}
-        if (Pattern.compile("^\\d{2}-\\d{2}-\\d{4}$").matcher(nodeValue).matches()) {
+        if (this.datePattern.matcher(nodeValue).matches()) {
             return 2;//Date
         }
         return 1;//String
@@ -138,26 +142,15 @@ public class Database {
     }
 
     ArrayList<String> paths(QueryForm[] queryForms){
-        PreparedStatement statement;
         try (var connection = dataSource.getConnection()) {
-            String valueCompleteForm;
-            valueCompleteForm = getValueCompleteForm(queryForms[0].value, queryForms[0].operator);
-            String sql = sql(sqlOperator(queryForms[0].operator), getValueTable(queryForms[0].name, connection));
-            statement = connection.prepareStatement(sql);
-            statement.setString(1, queryForms[0].name);
-            statement.setString(2, valueCompleteForm);
-            ResultSet rs = statement.executeQuery();
+            ResultSet rs = getPathResultSet(queryForms[0], connection);
             ArrayList<String> arrStr = new ArrayList<>();
             while (rs.next()) {
                 arrStr.add(rs.getString("path"));
             }
             if (queryForms.length > 1) {
                 for (int i = 1; i < queryForms.length; i++) {
-                    valueCompleteForm  = getValueCompleteForm(queryForms[i].value, queryForms[i].operator);
-                    statement = connection.prepareStatement(sql(sqlOperator(queryForms[i].operator), getValueTable(queryForms[i].name, connection)));
-                    statement.setString(1, queryForms[i].name);
-                    statement.setString(2, valueCompleteForm);
-                    rs = statement.executeQuery();
+                    rs = getPathResultSet(queryForms[i], connection);
                     if (queryForms[i].logic.equals("AND")) {
                         ArrayList<String> newArrStr = new ArrayList<>();
                         while (rs.next()) {
@@ -170,20 +163,41 @@ public class Database {
                     } else if (queryForms[i].logic.equals("OR")) {
                         while (rs.next()) {
                             String path = rs.getString("path");
-                            System.out.println(path);
                             if (!arrStr.contains(path)) {
                                 arrStr.add(path);
-                                System.out.println(path);
                             }
                         }
                     }
                 }
             }
             return arrStr;
-
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
+    }
+
+
+    ResultSet getPathResultSet (QueryForm queryForm, Connection connection) throws SQLException {
+        String valueCompleteForm = getValueCompleteForm(queryForm.value, queryForm.operator);
+        String sql = sql(sqlOperator(queryForm.operator), getValueTable(queryForm.name, connection));
+        PreparedStatement statement = connection.prepareStatement(sql);
+        statement.setString(1, queryForm.name);
+        var type = getValueTable(queryForm.name, connection);
+        switch (type){
+            case "number_value":
+                statement.setDouble(2, Integer.parseInt(queryForm.value));
+                break;
+            case "string_value":
+                statement.setString(2, valueCompleteForm);
+                break;
+            case "date_value":
+                var ld = LocalDate.parse(queryForm.value, this.dateFormat);
+                statement.setObject(2, ld, MysqlType.DATE);
+                break;
+            default:
+                throw new RuntimeException("Unknown type " + type);
+        }
+        return statement.executeQuery();
     }
 
     String getValueCompleteForm(String value, String operator){
@@ -192,6 +206,9 @@ public class Database {
             case "equals":
             case "<":
             case ">":
+            case "on":
+            case "before":
+            case "after":
                 return value;
             case "start with":
                 return value + "%";
@@ -208,10 +225,13 @@ public class Database {
         switch (operator) {
             case "=":
             case "equals":
+            case "on":
                 return "= ?";
             case "<":
+            case "before":
                 return "< ?";
             case ">":
+            case "after":
                 return "> ?";
             case "start with":
             case "end with":
